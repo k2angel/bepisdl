@@ -8,6 +8,7 @@ from urllib import parse
 
 import questionary
 import requests
+import tqdm
 from bs4 import BeautifulSoup as bs
 from questionary import Choice
 
@@ -18,13 +19,13 @@ def search(type: str, payload: dict):
     url = parse.urljoin("https://db.bepis.moe/", type)
     pattern = re.compile(r"/card/download/(\w+)_(\d+).\d+")
     for i in itertools.count():
-        payload["page"] = str(i+1)
+        payload["page"] = str(i + 1)
         res = requests.get(url, params=payload)
         soup = bs(res.text, "lxml")
         cards = soup.select("#inner-card-body > div > div")
         if not cards:
-            logger.info(f"page: {i}, card: {len(cards)}")
             break
+        logger.info(f"page: {i+1}, card: {len(cards)}")
         # page_active = soup.select_one("li[class='page-item active']")
         # page_end = soup.select_one("li[class=")
         for card in cards:
@@ -41,39 +42,38 @@ def search(type: str, payload: dict):
         time.sleep(1)
     return cards_
 
-def count(type, id):
-    payload = {
-        "cardType": type,
-        "cardId": id
-    }
-    requests.post("https://db.bepis.moe/card/count", data=payload)
 
 def download(card):
-    if card["type"] == "KK":
-        count(card["type"], card["id"])
-        time.sleep(1)
     url = parse.urljoin("https://db.bepis.moe", card["url"])
     name = os.path.basename(url)
-    dir = os.path.join("./cards", card["type"])
+    dir = os.path.join("./Cards", card["type"])
     if not os.path.exists(dir):
         os.mkdir(dir)
     path = os.path.join(dir, name)
     if not os.path.exists(path):
         res = requests.get(url, stream=True)
+        size = res.headers.get("content-length")
         if res.status_code == 200:
             with open(path, "wb") as f:
+                pbar = tqdm.tqdm(total=float(size), unit="B", unit_scale=True, leave=False, desc=f"Download: {card['title']}")
                 for chunk in res.iter_content(chunk_size=1024):
                     f.write(chunk)
-        logger.info(f"Downloaded. Title: {card['title']}, URL: {card['url']}")
+                    pbar.update(len(chunk))
+                else:
+                    pbar.close()
+        # logger.debug(f"Downloaded. Title: {card['title']}, URL: {card['url']}")
+        time.sleep(1)
+
 
 def ask():
     # https://db.bepis.moe/kkscenes?femalecount=2%2C&malecount=5%2C&vanilla=true&timeline=yes&hidden=true&featured=true
     type = questionary.select(
         "Type?",
         choices=[
-            Choice(title="Card", value="koikatsu"),
-            Choice(title="Scene", value="kkscenes"),
-            Choice(title="Clothing", value="kkclothing")
+            Choice(title="KK Card", value="koikatsu"),
+            Choice(title="KK Scene", value="kkscenes"),
+            Choice(title="KK Clothing", value="kkclothing"),
+            Choice(title="COM3D2 Card", value="com3d2")
         ]
     ).ask()
     name = questionary.text("Name?").ask()
@@ -89,13 +89,13 @@ def ask():
         ]
     ).ask()
     query = {
-            "name": name,
-            "tag": tag,
-            "orderby": orderby,
-            "hidden": str(hidden).lower(),
-            "featured": str(featured).lower(),
-        }
-    if type != "kkclothing":
+        "name": name,
+        "tag": tag,
+        "orderby": orderby,
+        "hidden": str(hidden).lower(),
+        "featured": str(featured).lower(),
+    }
+    if type != "kkclothing" or type != "com3d2":
         vanilla = questionary.confirm("Vanilla Only?").ask()
         query["vanilla"] = str(vanilla).lower()
         if type == "koikatsu":
@@ -137,6 +137,7 @@ def ask():
             query["timeline"] = timeline
     return type, query
 
+
 def make_logger(name):
     logger = getLogger(name)
     logger.setLevel(DEBUG)
@@ -146,15 +147,6 @@ def make_logger(name):
     st_handler.setFormatter(Formatter("[{levelname}] {message}", style="{"))
     logger.addHandler(st_handler)
 
-    fl_handler = FileHandler(filename=".log", encoding="utf-8", mode="w")
-    fl_handler.setLevel(DEBUG)
-    fl_handler.setFormatter(
-        Formatter(
-            "[{levelname}] {asctime} [{filename}:{lineno}] {message}", style="{"
-        )
-    )
-    logger.addHandler(fl_handler)
-
     return logger
 
 
@@ -163,13 +155,15 @@ if __name__ == "__main__":
     logger.info("BepisDB Downloader started...")
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     if not os.path.exists("./cards"):
-        logger.error("cards directory is not.")
         os.mkdir("./cards")
-        logger.info("cards directory created.")
-    type, payload = ask()
-    cards = search(type, payload)
-    logger.info("Download Started.")
-    for card in cards:
-        download(card)
-        time.sleep(1)
-    logger.info("Download Complete.")
+    while True:
+        type, payload = ask()
+        cards = search(type, payload)
+        logger.info("Download Started.")
+        for card in tqdm.tqdm(cards, desc="Queue"):
+            download(card)
+        logger.info("Download Finished.")
+        exit_flag = questionary.confirm("Exit?").ask()
+        if exit_flag:
+            logger.info("Exit.")
+            break
