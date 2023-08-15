@@ -1,2 +1,2 @@
 # BepisDB Downloader
-This version is Koikatsu character card Only.
+This version is Koikatsu Only.
