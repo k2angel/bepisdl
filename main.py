@@ -2,8 +2,7 @@ import itertools
 import os
 import re
 import time
-from logging import (DEBUG, INFO, FileHandler, Formatter, StreamHandler,
-                     getLogger)
+from logging import DEBUG, INFO, Formatter, StreamHandler, getLogger
 from urllib import parse
 
 import questionary
@@ -25,7 +24,7 @@ def search(type: str, payload: dict):
         cards = soup.select("#inner-card-body > div > div")
         if not cards:
             break
-        logger.info(f"page: {i+1}, card: {len(cards)}")
+        print(f"page: {i+1}, card: {len(cards)}")
         # page_active = soup.select_one("li[class='page-item active']")
         # page_end = soup.select_one("li[class=")
         for card in cards:
@@ -61,7 +60,6 @@ def download(card):
                     pbar.update(len(chunk))
                 else:
                     pbar.close()
-        # logger.debug(f"Downloaded. Title: {card['title']}, URL: {card['url']}")
         time.sleep(1)
 
 
@@ -138,32 +136,19 @@ def ask():
     return type, query
 
 
-def make_logger(name):
-    logger = getLogger(name)
-    logger.setLevel(DEBUG)
-
-    st_handler = StreamHandler()
-    st_handler.setLevel(INFO)
-    st_handler.setFormatter(Formatter("[{levelname}] {message}", style="{"))
-    logger.addHandler(st_handler)
-
-    return logger
-
-
 if __name__ == "__main__":
-    logger = make_logger(__name__)
-    logger.info("BepisDB Downloader started...")
+    print("BepisDB Downloader started...")
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    if not os.path.exists("./cards"):
-        os.mkdir("./cards")
+    if not os.path.exists("./Cards"):
+        os.mkdir("./Cards")
     while True:
         type, payload = ask()
         cards = search(type, payload)
-        logger.info("Download Started.")
+        print("Download Started.")
         for card in tqdm.tqdm(cards, desc="Queue"):
             download(card)
-        logger.info("Download Finished.")
+        print("Download Finished.")
         exit_flag = questionary.confirm("Exit?").ask()
         if exit_flag:
-            logger.info("Exit.")
+            print("Exit.")
             break
